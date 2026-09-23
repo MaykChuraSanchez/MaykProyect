@@ -1,0 +1,11 @@
+{
+  "name": "Suma — Copiloto financiero",
+  "short_name": "Suma",
+  "description": "Ordena tus movimientos, anticipa pagos y toma mejores decisiones financieras.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f8fb",
+  "theme_color": "#1d4ed8",
+  "lang": "es-CO",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
