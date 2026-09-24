@@ -103,6 +103,14 @@ import {
   signOutLocalUser,
   type LocalUser,
 } from '@/lib/local-account';
+import {
+  currentCloudUser,
+  isCloudAuthConfigured,
+  registerCloudUser,
+  resendCloudConfirmation,
+  signInCloudUser,
+  signOutCloudUser,
+} from '@/lib/cloud-auth';
 import { parseReceiptText, type ReceiptDraft } from '@/lib/receipt';
 
 type Summary = ReturnType<typeof calculateFinancialSummary>;
@@ -194,17 +202,25 @@ export default function FinanceCopilot() {
           )
           .catch(() => undefined);
     }
-    const session = currentLocalUser();
-    if (session) {
-      const savedData = loadLocalFinanceData(session.email);
-      setUser(session);
-      dataRef.current = savedData;
-      setData(savedData);
-      setSummary(calculateFinancialSummary(savedData));
-      setInsights(generateInsights(savedData));
+    async function restoreSession() {
+      const session = isCloudAuthConfigured
+        ? await currentCloudUser()
+        : currentLocalUser();
+      if (session) {
+        const savedData = loadLocalFinanceData(session.email);
+        setUser(session);
+        dataRef.current = savedData;
+        setData(savedData);
+        setSummary(calculateFinancialSummary(savedData));
+        setInsights(generateInsights(savedData));
+      }
+      setAuthReady(true);
+      setLoading(false);
     }
-    setAuthReady(true);
-    setLoading(false);
+    restoreSession().catch(() => {
+      setAuthReady(true);
+      setLoading(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -378,8 +394,9 @@ export default function FinanceCopilot() {
           theme={theme}
           onTheme={changeTheme}
           user={user}
-          onLogout={() => {
-            signOutLocalUser();
+          onLogout={async () => {
+            if (isCloudAuthConfigured) await signOutCloudUser();
+            else signOutLocalUser();
             setUser(null);
             setData(structuredClone(demoFinanceData));
           }}
@@ -468,22 +485,64 @@ function AuthScreen({
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmationSent, setConfirmationSent] = useState(false);
+  const [resent, setResent] = useState(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    setBusy(true);
     setError('');
+    const normalizedEmail = email.trim().toLowerCase();
+    if (mode === 'register' && name.trim().length < 2) {
+      setError('Escribe tu nombre para crear la cuenta.');
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+      setError('Escribe un correo electrónico válido.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('La contraseña debe tener al menos 8 caracteres.');
+      return;
+    }
+    setBusy(true);
     try {
-      const nextUser =
-        mode === 'register'
-          ? await registerLocalUser(name, email, password)
-          : await signInLocalUser(email, password);
-      onAuthenticated(nextUser);
+      if (isCloudAuthConfigured && mode === 'register') {
+        const result = await registerCloudUser(name, normalizedEmail, password);
+        if (result.confirmationRequired) {
+          setConfirmationSent(true);
+          return;
+        }
+        if (result.user) onAuthenticated(result.user);
+      } else {
+        const nextUser = isCloudAuthConfigured
+          ? await signInCloudUser(normalizedEmail, password)
+          : mode === 'register'
+            ? await registerLocalUser(name, normalizedEmail, password)
+            : await signInLocalUser(normalizedEmail, password);
+        onAuthenticated(nextUser);
+      }
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
           : 'No pudimos completar el acceso.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resendConfirmation() {
+    setBusy(true);
+    setError('');
+    try {
+      await resendCloudConfirmation(email);
+      setResent(true);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'No pudimos reenviar el correo.',
       );
     } finally {
       setBusy(false);
@@ -531,81 +590,144 @@ function AuthScreen({
         <div className="auth-tabs">
           <button
             className={mode === 'register' ? 'active' : ''}
-            onClick={() => setMode('register')}
+            onClick={() => {
+              setMode('register');
+              setConfirmationSent(false);
+              setError('');
+            }}
           >
             Crear cuenta
           </button>
           <button
             className={mode === 'login' ? 'active' : ''}
-            onClick={() => setMode('login')}
+            onClick={() => {
+              setMode('login');
+              setConfirmationSent(false);
+              setError('');
+            }}
           >
             Ingresar
           </button>
         </div>
-        <div>
-          <span className="auth-icon">
-            <UserRound />
-          </span>
-          <h2>
-            {mode === 'register'
-              ? 'Crea tu espacio personal'
-              : 'Bienvenido de nuevo'}
-          </h2>
-          <p>
-            {mode === 'register'
-              ? 'Empieza vacío y agrega únicamente tus datos reales.'
-              : 'Ingresa con la cuenta creada en este dispositivo.'}
-          </p>
-        </div>
-        <form onSubmit={submit}>
-          {mode === 'register' && (
-            <Field label="Nombre">
-              <input
-                autoFocus
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                autoComplete="name"
-                placeholder="Tu nombre"
-              />
-            </Field>
-          )}
-          <Field label="Correo electrónico">
-            <input
-              autoFocus={mode === 'login'}
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
-              placeholder="tu@correo.com"
-            />
-          </Field>
-          <Field label="Contraseña">
-            <input
-              type="password"
-              minLength={8}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete={
-                mode === 'register' ? 'new-password' : 'current-password'
-              }
-              placeholder="Mínimo 8 caracteres"
-            />
-          </Field>
-          {error && (
-            <p className="form-error">
-              <AlertTriangle />
-              {error}
+        {confirmationSent ? (
+          <div className="confirmation-sent" aria-live="polite">
+            <span className="auth-icon success">
+              <Mail />
+            </span>
+            <small>CONFIRMA TU IDENTIDAD</small>
+            <h2>Revisa tu correo</h2>
+            <p>
+              Enviamos un enlace de confirmación a <b>{email}</b>. Ábrelo para
+              activar tu cuenta y regresar a Suma.
             </p>
-          )}
-          <Button className="full-save" disabled={busy}>
-            {busy ? <RefreshCw className="spin" /> : <ShieldCheck />}
-            {mode === 'register' ? 'Crear mi cuenta' : 'Ingresar'}
-          </Button>
-        </form>
-        <small className="local-security-note">
-          Versión beta personal: la contraseña se deriva con PBKDF2 y los datos
-          se guardan en este navegador. No uses una contraseña bancaria.
-        </small>
+            <div className="confirmation-steps">
+              <span>
+                <b>1</b> Revisa entrada y spam
+              </span>
+              <span>
+                <b>2</b> Abre el enlace de Suma
+              </span>
+              <span>
+                <b>3</b> Ingresa con tu contraseña
+              </span>
+            </div>
+            {resent && (
+              <p className="form-success">Correo reenviado correctamente.</p>
+            )}
+            {error && (
+              <p className="form-error">
+                <AlertTriangle />
+                {error}
+              </p>
+            )}
+            <Button
+              className="full-save"
+              variant="outline"
+              disabled={busy}
+              onClick={resendConfirmation}
+            >
+              {busy ? <RefreshCw className="spin" /> : <Mail />}
+              Reenviar correo
+            </Button>
+            <button
+              className="auth-text-button"
+              onClick={() => setConfirmationSent(false)}
+            >
+              Usar otro correo
+            </button>
+          </div>
+        ) : (
+          <>
+            <div>
+              <span className="auth-icon">
+                <UserRound />
+              </span>
+              <h2>
+                {mode === 'register'
+                  ? 'Crea tu espacio personal'
+                  : 'Bienvenido de nuevo'}
+              </h2>
+              <p>
+                {mode === 'register'
+                  ? 'Empieza vacío y agrega únicamente tus datos reales.'
+                  : 'Ingresa con la cuenta creada en este dispositivo.'}
+              </p>
+            </div>
+            <form onSubmit={submit} noValidate>
+              {mode === 'register' && (
+                <Field label="Nombre">
+                  <input
+                    autoFocus
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    autoComplete="name"
+                    placeholder="Tu nombre"
+                    required
+                  />
+                </Field>
+              )}
+              <Field label="Correo electrónico">
+                <input
+                  autoFocus={mode === 'login'}
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
+                  placeholder="tu@correo.com"
+                  required
+                />
+              </Field>
+              <Field label="Contraseña">
+                <input
+                  type="password"
+                  minLength={8}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete={
+                    mode === 'register' ? 'new-password' : 'current-password'
+                  }
+                  placeholder="Mínimo 8 caracteres"
+                  required
+                />
+              </Field>
+              {error && (
+                <p className="form-error" role="alert" aria-live="assertive">
+                  <AlertTriangle />
+                  {error}
+                </p>
+              )}
+              <Button type="submit" className="full-save" disabled={busy}>
+                {busy ? <RefreshCw className="spin" /> : <ShieldCheck />}
+                {mode === 'register' ? 'Crear mi cuenta' : 'Ingresar'}
+              </Button>
+            </form>
+            <small className="local-security-note">
+              {isCloudAuthConfigured
+                ? 'Tu cuenta se activa mediante un enlace seguro enviado a tu correo.'
+                : 'Modo de prueba: esta cuenta se guarda en este navegador. La verificación por correo se activará al conectar el servicio de cuentas en la nube.'}
+            </small>
+          </>
+        )}
       </section>
     </main>
   );
@@ -2415,7 +2537,7 @@ function AssistantView({ data }: { data: FinanceData }) {
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Pregunta por gastos, deuda, ahorro o pagos..."
           />
-          <Button disabled={thinking}>
+          <Button type="submit" disabled={thinking}>
             {thinking ? <RefreshCw className="spin" /> : <ArrowUpRight />}
           </Button>
         </form>
@@ -2956,7 +3078,7 @@ function RegisterDialog({
                 {error}
               </p>
             )}
-            <Button className="full-save" disabled={saving}>
+            <Button type="submit" className="full-save" disabled={saving}>
               {saving ? <RefreshCw className="spin" /> : <Check />} Guardar{' '}
               {type.toLowerCase()}
             </Button>

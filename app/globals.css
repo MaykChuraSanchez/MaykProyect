@@ -3791,6 +3791,125 @@ svg {
   line-height: 1.5;
   text-align: center;
 }
+.confirmation-sent {
+  padding: 12px 4px 4px;
+  text-align: center;
+}
+.confirmation-sent > small {
+  color: #13795a;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.confirmation-sent .auth-icon.success {
+  width: 54px;
+  height: 54px;
+  margin-bottom: 16px;
+  border-radius: 50%;
+}
+.confirmation-sent h2 {
+  margin-top: 8px;
+}
+.confirmation-sent p b {
+  color: #173f54;
+}
+.confirmation-steps {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+  text-align: left;
+}
+.confirmation-steps span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: #f1f6f7;
+  color: #405462;
+  font-size: 0.65rem;
+}
+.confirmation-steps b {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #dceee7;
+  color: #13795a;
+  font-size: 0.6rem;
+}
+.confirmation-sent .form-success {
+  margin: 0 0 10px;
+  color: #13795a;
+  font-weight: 700;
+}
+.auth-text-button {
+  margin-top: 13px;
+  border: 0;
+  background: transparent;
+  color: #1d6382;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+.confirm-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #0b2433 0%, #123e52 55%, #155945 100%);
+}
+.confirm-card {
+  width: min(460px, 100%);
+  padding: 42px;
+  border-radius: 20px;
+  background: #fff;
+  color: #152331;
+  text-align: center;
+  box-shadow: 0 30px 70px #03131c55;
+}
+.confirm-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  background: #e5f3ee;
+  color: #13795a;
+}
+.confirm-icon.error {
+  background: #fff0e8;
+  color: #b74d27;
+}
+.confirm-card > small {
+  color: #13795a;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+.confirm-card h1 {
+  margin: 10px 0;
+  font-size: 1.8rem;
+}
+.confirm-card p {
+  margin: 0 0 24px;
+  color: #647483;
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+.confirm-card a {
+  display: inline-flex;
+  justify-content: center;
+  width: 100%;
+  padding: 12px 18px;
+  border-radius: 9px;
+  background: #174d68;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-decoration: none;
+}
 .register-modes {
   grid-template-columns: repeat(4, 1fr);
 }
