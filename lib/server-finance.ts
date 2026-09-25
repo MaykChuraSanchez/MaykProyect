@@ -3,14 +3,6 @@ import { getDb } from '@/db';
 import { accounts, budgets, commitments, creditCards, goals, movements, preferences, recurring, rules } from '@/db/schema';
 import { demoFinanceData, type FinanceData } from '@/lib/finance';
 
-export function getRequestUserId(request: Request) {
-  const forwarded = request.headers.get('oai-authenticated-user-id');
-  if (forwarded) return forwarded;
-  if (process.env.APP_SINGLE_USER_ID) return process.env.APP_SINGLE_USER_ID;
-  if (process.env.NODE_ENV !== 'production') return 'local-preview';
-  return null;
-}
-
 export async function loadFinanceData(userId: string): Promise<FinanceData> {
   const db = getDb();
   const [movementRows, accountRows, cardRows, budgetRows, commitmentRows, goalRows, recurringRows, ruleRows, preferenceRows] = await Promise.all([
@@ -45,3 +37,4 @@ export async function loadFinanceData(userId: string): Promise<FinanceData> {
 }
 
 function safeJsonArray(value: string) { try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.map(String) : []; } catch { return []; } }
+

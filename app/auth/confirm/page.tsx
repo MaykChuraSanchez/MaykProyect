@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Check, LoaderCircle, ShieldCheck } from 'lucide-react';
+import type { EmailOtpType } from '@supabase/supabase-js';
 import { getCloudAuthClient, isCloudAuthConfigured } from '@/lib/cloud-auth';
 
 export default function ConfirmEmailPage() {
@@ -16,15 +17,39 @@ export default function ConfirmEmailPage() {
       return;
     }
     const client = getCloudAuthClient();
-    client.auth.getSession().then(({ data }) => {
-      if (data.session) setState('ready');
-    });
+    let active = true;
+    async function confirm() {
+      const url = new URL(window.location.href);
+      const tokenHash = url.searchParams.get('token_hash');
+      const type = url.searchParams.get('type') as EmailOtpType | null;
+      const code = url.searchParams.get('code');
+      let error: Error | null = null;
+
+      if (tokenHash && type) {
+        ({ error } = await client.auth.verifyOtp({ token_hash: tokenHash, type }));
+      } else if (code) {
+        ({ error } = await client.auth.exchangeCodeForSession(code));
+      } else {
+        const result = await client.auth.getSession();
+        error = result.error;
+        if (result.data.session && active) setState('ready');
+        return;
+      }
+
+      if (!active) return;
+      if (error) setState('error');
+      else {
+        window.history.replaceState({}, '', '/auth/confirm');
+        setState('ready');
+      }
+    }
+    void confirm();
     const { data } = client.auth.onAuthStateChange((_event, session) => {
-      if (session) setState('ready');
-      else window.setTimeout(() => setState('error'), 4500);
+      if (active && session) setState('ready');
     });
     const timeout = window.setTimeout(() => setState('error'), 8000);
     return () => {
+      active = false;
       window.clearTimeout(timeout);
       data.subscription.unsubscribe();
     };
@@ -64,3 +89,4 @@ export default function ConfirmEmailPage() {
     </main>
   );
 }
+

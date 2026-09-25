@@ -1,18 +1,19 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { accounts, budgets, commitments, creditCards, goals, preferences, recurring, rules } from '@/db/schema';
-import { getRequestUserId, loadFinanceData } from '@/lib/server-finance';
+import { loadFinanceData } from '@/lib/server-finance';
+import { getAuthenticatedUserId } from '@/lib/server-auth';
 
 const now = () => new Date().toISOString();
 const positive = (value: unknown) => { const amount = Number(value); return Number.isFinite(amount) && amount > 0 ? amount : null; };
 
 export async function GET(request: Request) {
-  const userId = getRequestUserId(request); if (!userId) return Response.json({ error: 'Autenticación requerida' }, { status: 401 });
+  const userId = await getAuthenticatedUserId(request); if (!userId) return Response.json({ error: 'Autenticación requerida' }, { status: 401 });
   return Response.json(await loadFinanceData(userId));
 }
 
 export async function POST(request: Request) {
-  const userId = getRequestUserId(request); if (!userId) return Response.json({ error: 'Autenticación requerida' }, { status: 401 });
+  const userId = await getAuthenticatedUserId(request); if (!userId) return Response.json({ error: 'Autenticación requerida' }, { status: 401 });
   const body = await request.json() as Record<string, unknown>; const kind = String(body.kind || ''); const db = getDb(); const stamp = now();
   try {
     if (kind === 'account') {
@@ -55,3 +56,4 @@ export async function POST(request: Request) {
     throw new Error('Tipo de registro no válido.');
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'No se pudo guardar.' }, { status: 400 }); }
 }
+

@@ -1,10 +1,10 @@
 import { and, desc, eq, inArray, like, or, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { accounts, commitments, creditCards, movements, rules } from '@/db/schema';
-import { getRequestUserId } from '@/lib/server-finance';
+import { getAuthenticatedUserId } from '@/lib/server-auth';
 
 export async function GET(request: Request) {
-  const userId = getRequestUserId(request);
+  const userId = await getAuthenticatedUserId(request);
   if (!userId) return Response.json({ error: 'Autenticación requerida' }, { status: 401 });
   const url = new URL(request.url); const page = Math.max(1, Number(url.searchParams.get('page') || 1)); const size = Math.min(50, Math.max(5, Number(url.searchParams.get('size') || 10)));
   const search = url.searchParams.get('search')?.trim(); const type = url.searchParams.get('type'); const status = url.searchParams.get('status');
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const userId = getRequestUserId(request);
+  const userId = await getAuthenticatedUserId(request);
   if (!userId) return Response.json({ error: 'Autenticación requerida' }, { status: 401 });
   const body = await request.json() as Record<string, unknown>; const amount = Number(body.amount); const type = String(body.type) as 'Gasto' | 'Ingreso' | 'Transferencia';
   if (!['Gasto', 'Ingreso', 'Transferencia'].includes(type) || !Number.isFinite(amount) || amount <= 0 || !String(body.description ?? '').trim()) return Response.json({ error: 'Completa tipo, monto y descripción.' }, { status: 400 });
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const userId = getRequestUserId(request); if (!userId) return Response.json({ error: 'Autenticación requerida' }, { status: 401 });
+  const userId = await getAuthenticatedUserId(request); if (!userId) return Response.json({ error: 'Autenticación requerida' }, { status: 401 });
   const body = await request.json() as Record<string, unknown>; const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter(Number.isFinite).slice(0, 100) : [];
   if (!ids.length) return Response.json({ error: 'Selecciona al menos un movimiento.' }, { status: 400 });
   const updates: Record<string, unknown> = { updatedAt: new Date().toISOString() };
@@ -64,7 +64,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const userId = getRequestUserId(request); if (!userId) return Response.json({ error: 'Autenticación requerida' }, { status: 401 });
+  const userId = await getAuthenticatedUserId(request); if (!userId) return Response.json({ error: 'Autenticación requerida' }, { status: 401 });
   const body = await request.json() as Record<string, unknown>; const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter(Number.isFinite).slice(0, 100) : [];
   if (!ids.length) return Response.json({ error: 'Selecciona movimientos.' }, { status: 400 });
   await getDb().delete(movements).where(and(eq(movements.userId, userId), inArray(movements.id, ids)));
@@ -73,3 +73,4 @@ export async function DELETE(request: Request) {
 
 function validDate(value: unknown) { return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T12:00:00`)); }
 function safeTags(value: string) { try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
+
