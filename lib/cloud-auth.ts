@@ -75,6 +75,12 @@ export async function signOutCloudUser() {
   if (isCloudAuthConfigured) await getCloudAuthClient().auth.signOut();
 }
 
+export async function getCloudAccessToken() {
+  if (!isCloudAuthConfigured) return null;
+  const { data } = await getCloudAuthClient().auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
 function toLocalUser(email: string, name?: unknown): LocalUser {
   const fallback = email.split('@')[0] || 'Usuario';
   return {

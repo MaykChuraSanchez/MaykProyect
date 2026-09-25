@@ -22,8 +22,12 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --font-sans: var(--font-geist-sans);
-  --font-heading: var(--font-geist-sans);
+  --font-sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial,
+    sans-serif;
+  --font-heading:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial,
+    sans-serif;
   --radius-sm: 0.55rem;
   --radius-md: 0.7rem;
   --radius-lg: 0.85rem;
@@ -90,7 +94,13 @@
   border-color: var(--border);
 }
 html {
-  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-family:
+    ui-sans-serif,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Arial,
+    sans-serif;
   background: var(--background);
   scroll-behavior: smooth;
 }
@@ -99,6 +109,13 @@ body {
   min-width: 320px;
   background: var(--background);
   color: var(--foreground);
+  font-family:
+    ui-sans-serif,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Arial,
+    sans-serif;
   font-size: 16px;
 }
 button,
@@ -2320,10 +2337,35 @@ svg {
 .question-grid svg {
   width: 13px;
 }
+.assistant-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 360px;
+  margin-top: 17px;
+  padding-right: 3px;
+  overflow-y: auto;
+}
+.assistant-thread > div {
+  display: flex;
+  flex-direction: column;
+}
+.assistant-question {
+  align-self: flex-end;
+  max-width: 82%;
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 11px 11px 3px 11px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  text-align: left;
+}
 .assistant-answer {
   display: flex;
   gap: 10px;
-  margin-top: 17px;
+  margin-top: 7px;
   padding: 14px;
   border-radius: 10px;
   background: var(--accent);

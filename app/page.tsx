@@ -105,6 +105,7 @@ import {
 } from '@/lib/local-account';
 import {
   currentCloudUser,
+  getCloudAccessToken,
   isCloudAuthConfigured,
   registerCloudUser,
   resendCloudConfirmation,
@@ -127,6 +128,35 @@ type DashboardPayload = {
   summary: Summary;
   insights: ReturnType<typeof generateInsights>;
 };
+
+async function mergeCloudGmailMovements(localData: FinanceData) {
+  try {
+    const token = await getCloudAccessToken();
+    if (!token) return localData;
+    const response = await fetch('/api/dashboard', {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    if (!response.ok) return localData;
+    const payload = (await response.json()) as DashboardPayload;
+    const imported = payload.data.movements
+      .filter((movement) => movement.source.startsWith('Gmail'))
+      .map((movement) => ({ ...movement, id: `gmail:${movement.id}` }));
+    const importedIds = new Set(imported.map((movement) => movement.id));
+    return {
+      ...localData,
+      movements: [
+        ...imported,
+        ...localData.movements.filter(
+          (movement) => !importedIds.has(String(movement.id)),
+        ),
+      ],
+      demoMode: false,
+    };
+  } catch {
+    return localData;
+  }
+}
 
 const nav = [
   { label: 'Inicio', icon: Home },
@@ -207,7 +237,10 @@ export default function FinanceCopilot() {
         ? await currentCloudUser()
         : currentLocalUser();
       if (session) {
-        const savedData = loadLocalFinanceData(session.email);
+        let savedData = loadLocalFinanceData(session.email);
+        if (isCloudAuthConfigured)
+          savedData = await mergeCloudGmailMovements(savedData);
+        saveLocalFinanceData(session.email, savedData);
         setUser(session);
         dataRef.current = savedData;
         setData(savedData);
@@ -228,6 +261,24 @@ export default function FinanceCopilot() {
       ? `Suma · ${user.name}`
       : 'Suma · Finanzas personales';
   }, [user]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gmail = params.get('gmail');
+    if (gmail === 'connected') {
+      const imported = Number(params.get('imported') || 0);
+      showNotice(
+        imported
+          ? `Gmail conectado: ${imported} movimientos nuevos detectados.`
+          : 'Gmail quedó conectado correctamente.',
+      );
+    }
+    if (gmail === 'error')
+      showNotice(
+        params.get('message') || 'No pudimos completar la conexión con Gmail.',
+      );
+    if (gmail) window.history.replaceState({}, '', window.location.pathname);
+  }, []);
 
   function showNotice(message: string) {
     setNotice(message);
@@ -2468,18 +2519,24 @@ function SmartInbox({ data, showNotice, applyData, openRegister }: any) {
 
 function AssistantView({ data }: { data: FinanceData }) {
   const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
+  const [messages, setMessages] = useState<
+    Array<{ id: string; question: string; answer: string }>
+  >([]);
   const [thinking, setThinking] = useState(false);
   function askQuestion(value: string) {
     const clean = value.trim();
     if (!clean) return;
     setThinking(true);
     window.setTimeout(() => {
-      setAnswer(
+      const response =
         data.movements.length || data.accounts.length
           ? answerFinancialQuestion(clean, data)
-          : 'Todavía no tienes datos personales. Registra un gasto, una cuenta o una boleta y podré calcular una respuesta útil.',
-      );
+          : 'Todavía no tienes datos personales. Registra un gasto, una cuenta o una boleta y podré calcular una respuesta útil.';
+      setMessages((current) => [
+        ...current.slice(-4),
+        { id: crypto.randomUUID(), question: clean, answer: response },
+      ]);
+      setQuestion('');
       setThinking(false);
     }, 220);
   }
@@ -2522,13 +2579,20 @@ function AssistantView({ data }: { data: FinanceData }) {
             </button>
           ))}
         </div>
-        {answer && (
-          <div className="assistant-answer">
-            <Sparkles />
-            <div>
-              <small>RESPUESTA BASADA EN TUS DATOS</small>
-              <p>{answer}</p>
-            </div>
+        {messages.length > 0 && (
+          <div className="assistant-thread" aria-live="polite">
+            {messages.map((message) => (
+              <div key={message.id}>
+                <p className="assistant-question">{message.question}</p>
+                <div className="assistant-answer">
+                  <Sparkles />
+                  <div>
+                    <small>RESPUESTA BASADA EN TUS DATOS</small>
+                    <p>{message.answer}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
         <form onSubmit={ask}>
@@ -2536,8 +2600,13 @@ function AssistantView({ data }: { data: FinanceData }) {
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Pregunta por gastos, deuda, ahorro o pagos..."
+            aria-label="Pregunta para el asistente financiero"
           />
-          <Button type="submit" disabled={thinking}>
+          <Button
+            type="submit"
+            disabled={thinking || !question.trim()}
+            aria-label="Enviar pregunta"
+          >
             {thinking ? <RefreshCw className="spin" /> : <ArrowUpRight />}
           </Button>
         </form>
@@ -2560,6 +2629,7 @@ function SettingsView({
   onClear,
 }: any) {
   const [cushion, setCushion] = useState(String(data.securityCushion));
+  const [connectingGmail, setConnectingGmail] = useState(false);
   async function save() {
     applyData({ ...data, securityCushion: Math.max(0, Number(cushion) || 0) });
     showNotice('Preferencias guardadas');
@@ -2570,6 +2640,40 @@ function SettingsView({
       'suma-backup.json',
       'application/json',
     );
+  }
+  async function connectGmail() {
+    if (!isCloudAuthConfigured) {
+      showNotice(
+        'Primero debemos activar la cuenta verificada en la nube para conectar Gmail.',
+      );
+      return;
+    }
+    setConnectingGmail(true);
+    try {
+      const token = await getCloudAccessToken();
+      if (!token)
+        throw new Error(
+          'Tu sesión venció. Cierra sesión e ingresa nuevamente.',
+        );
+      const response = await fetch('/api/integrations/gmail/connect', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = (await response.json()) as {
+        url?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.url)
+        throw new Error(payload.error || 'No pudimos iniciar la conexión.');
+      window.location.assign(payload.url);
+    } catch (cause) {
+      showNotice(
+        cause instanceof Error
+          ? cause.message
+          : 'No pudimos iniciar la conexión con Gmail.',
+      );
+      setConnectingGmail(false);
+    }
   }
   return (
     <>
@@ -2647,15 +2751,13 @@ function SettingsView({
             <span>
               <b>Motor automático de Gmail</b>
               <small>
-                BCP e Interbank · requiere credenciales de producción
+                {isCloudAuthConfigured
+                  ? 'BCP e Interbank · acceso de solo lectura'
+                  : 'Disponible al activar tu cuenta verificada'}
               </small>
             </span>
-            <button
-              onClick={() => {
-                window.location.href = '/api/integrations/gmail/connect';
-              }}
-            >
-              Conectar con Google
+            <button onClick={connectGmail} disabled={connectingGmail}>
+              {connectingGmail ? 'Abriendo Google…' : 'Conectar con Google'}
             </button>
           </div>
         </Panel>
@@ -2688,7 +2790,11 @@ function SettingsView({
               <b>{user.name}</b>
               <small>{user.email}</small>
             </div>
-            <em>Cuenta local activa</em>
+            <em>
+              {isCloudAuthConfigured
+                ? 'Cuenta verificada'
+                : 'Cuenta local activa'}
+            </em>
           </div>
           <button className="export-row" onClick={backup}>
             <Download />

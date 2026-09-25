@@ -669,7 +669,70 @@ export function generateInsights(data: FinanceData) {
 
 export function answerFinancialQuestion(question: string, data: FinanceData) {
   const q = question.toLowerCase();
+  const normalized = q.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const summary = calculateFinancialSummary(data);
+  if (/^(hola|buenos dias|buenas tardes|ayuda)/.test(normalized))
+    return 'Puedo calcular cuánto tienes disponible, tus gastos por comercio o categoría, deudas, próximos pagos, presupuestos y ahorro. Pregúntame usando tus propias palabras.';
+
+  const knownMerchant = [
+    ...new Set(
+      data.movements
+        .map((movement) => movement.merchant?.trim())
+        .filter((merchant): merchant is string => Boolean(merchant)),
+    ),
+  ]
+    .sort((left, right) => right.length - left.length)
+    .find((merchant) =>
+      normalized.includes(
+        merchant
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, ''),
+      ),
+    );
+  if (knownMerchant) {
+    const value = data.movements
+      .filter(
+        (movement) =>
+          movement.type === 'Gasto' && movement.merchant === knownMerchant,
+      )
+      .reduce((total, movement) => total + movement.amount, 0);
+    return `Gastaste ${formatMoney(value)} en ${knownMerchant} en los movimientos registrados.`;
+  }
+
+  const categories: Array<[RegExp, string]> = [
+    [/alimentacion|comida|supermercado/, 'Alimentación'],
+    [/restaurante/, 'Restaurantes'],
+    [/transporte|taxi|gasolina|combustible/, 'Transporte'],
+    [/salud|farmacia|medic/, 'Salud'],
+    [/vivienda|alquiler|servicios/, 'Vivienda'],
+    [/compra|shopping/, 'Compras'],
+  ];
+  const requestedCategory = categories.find(([pattern]) =>
+    pattern.test(normalized),
+  )?.[1];
+  if (requestedCategory) {
+    const value = data.movements
+      .filter(
+        (movement) =>
+          movement.type === 'Gasto' && movement.category === requestedCategory,
+      )
+      .reduce((total, movement) => total + movement.amount, 0);
+    return `Gastaste ${formatMoney(value)} en ${requestedCategory.toLowerCase()} durante el período visible.`;
+  }
+
+  if (/ingreso|gane|recibi/.test(normalized))
+    return `Tus ingresos registrados este mes suman ${formatMoney(summary.income)}.`;
+  if (/gasto|gaste|egreso/.test(normalized) && !/mayor/.test(normalized))
+    return `Tus gastos registrados este mes suman ${formatMoney(summary.expenses)} y tu flujo neto es ${formatMoney(summary.netFlow)}.`;
+  if (/presupuesto|limite/.test(normalized)) {
+    const active = data.budgets
+      .map((budget) => ({ ...budget, remaining: budget.limit - budget.spent }))
+      .sort((left, right) => left.remaining - right.remaining)[0];
+    return active
+      ? `En ${active.name} te quedan ${formatMoney(Math.max(0, active.remaining))} de un límite de ${formatMoney(active.limit)}.`
+      : 'Todavía no tienes presupuestos. Crea uno para que pueda vigilar tus límites.';
+  }
   if (/plaza vea/.test(q)) {
     const value = data.movements
       .filter(
@@ -691,12 +754,6 @@ export function answerFinancialQuestion(question: string, data: FinanceData) {
       .filter((m) => m.type === 'Gasto')
       .sort((a, b) => b.amount - a.amount)[0];
     return `Tu mayor gasto registrado fue ${largest?.merchant || largest?.description}: ${formatMoney(largest?.amount || 0)}.`;
-  }
-  if (/comida|alimentación|alimentacion/.test(q)) {
-    const value = data.movements
-      .filter((m) => m.type === 'Gasto' && m.category === 'Alimentación')
-      .reduce((s, m) => s + m.amount, 0);
-    return `Gastaste ${formatMoney(value)} en alimentación durante el período visible.`;
   }
   if (/ahorrar|ahorro|cierre/.test(q))
     return `En el escenario base cerrarías el mes con ${formatMoney(summary.projection.base)}. Tu ahorro acumulado del mes es ${formatMoney(summary.savings)}.`;
