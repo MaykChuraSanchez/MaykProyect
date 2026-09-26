@@ -109,6 +109,7 @@ import {
   isCloudAuthConfigured,
   registerCloudUser,
   resendCloudConfirmation,
+  sendCloudPasswordReset,
   signInCloudUser,
   signOutCloudUser,
 } from '@/lib/cloud-auth';
@@ -537,6 +538,7 @@ function AuthScreen({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
+  const [recoverySent, setRecoverySent] = useState(false);
   const [resent, setResent] = useState(false);
 
   async function submit(event: FormEvent) {
@@ -600,6 +602,28 @@ function AuthScreen({
     }
   }
 
+  async function requestPasswordReset() {
+    setError('');
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+      setError('Escribe primero el correo de tu cuenta.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await sendCloudPasswordReset(normalizedEmail);
+      setRecoverySent(true);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'No pudimos enviar el enlace de recuperación.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="auth-shell">
       <section className="auth-intro">
@@ -644,6 +668,7 @@ function AuthScreen({
             onClick={() => {
               setMode('register');
               setConfirmationSent(false);
+              setRecoverySent(false);
               setError('');
             }}
           >
@@ -654,13 +679,55 @@ function AuthScreen({
             onClick={() => {
               setMode('login');
               setConfirmationSent(false);
+              setRecoverySent(false);
               setError('');
             }}
           >
             Ingresar
           </button>
         </div>
-        {confirmationSent ? (
+        {recoverySent ? (
+          <div className="confirmation-sent" aria-live="polite">
+            <span className="auth-icon success">
+              <Mail />
+            </span>
+            <small>RECUPERA TU ACCESO</small>
+            <h2>Revisa tu correo</h2>
+            <p>
+              Si existe una cuenta para <b>{email}</b>, recibirás un enlace
+              para crear una contraseña nueva. Revisa también spam.
+            </p>
+            <div className="confirmation-steps">
+              <span>
+                <b>1</b> Abre el correo de recuperación
+              </span>
+              <span>
+                <b>2</b> Define una contraseña nueva
+              </span>
+              <span>
+                <b>3</b> Regresa e ingresa a Suma
+              </span>
+            </div>
+            <Button
+              className="full-save"
+              variant="outline"
+              disabled={busy}
+              onClick={requestPasswordReset}
+            >
+              {busy ? <RefreshCw className="spin" /> : <Mail />}
+              Reenviar enlace
+            </Button>
+            <button
+              className="auth-text-button"
+              onClick={() => {
+                setRecoverySent(false);
+                setError('');
+              }}
+            >
+              Volver al ingreso
+            </button>
+          </div>
+        ) : confirmationSent ? (
           <div className="confirmation-sent" aria-live="polite">
             <span className="auth-icon success">
               <Mail />
@@ -702,9 +769,13 @@ function AuthScreen({
             </Button>
             <button
               className="auth-text-button"
-              onClick={() => setConfirmationSent(false)}
+              onClick={() => {
+                setConfirmationSent(false);
+                setMode('login');
+                setError('');
+              }}
             >
-              Usar otro correo
+              Ya confirmé mi correo · Ingresar
             </button>
           </div>
         ) : (
@@ -721,7 +792,7 @@ function AuthScreen({
               <p>
                 {mode === 'register'
                   ? 'Empieza vacío y agrega únicamente tus datos reales.'
-                  : 'Ingresa con la cuenta creada en este dispositivo.'}
+                  : 'Ingresa con tu cuenta confirmada de Suma.'}
               </p>
             </div>
             <form onSubmit={submit} noValidate>
@@ -761,6 +832,16 @@ function AuthScreen({
                   required
                 />
               </Field>
+              {mode === 'login' && isCloudAuthConfigured && (
+                <button
+                  type="button"
+                  className="forgot-password"
+                  disabled={busy}
+                  onClick={requestPasswordReset}
+                >
+                  ¿Olvidaste tu contraseña?
+                </button>
+              )}
               {error && (
                 <p className="form-error" role="alert" aria-live="assertive">
                   <AlertTriangle />
@@ -4475,3 +4556,4 @@ function receiptStatus(value: string) {
   };
   return labels[value.toLowerCase()] ?? 'Procesando la boleta…';
 }
+
