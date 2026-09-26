@@ -58,20 +58,23 @@ function DialogContent({
         )}
         {...props}
       >
-        {children}
+        <div data-slot="dialog-scroll-region" className="contents">
+          {children}
+        </div>
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
             render={
               <Button
                 variant="ghost"
-                className="absolute top-2 right-2"
+                className="absolute top-2 right-2 z-20"
                 size="icon-sm"
+                aria-label="Cerrar ventana"
               />
             }
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">Cerrar ventana</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>
