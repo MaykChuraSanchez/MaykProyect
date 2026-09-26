@@ -71,6 +71,14 @@ export async function resendCloudConfirmation(email: string) {
   if (error) throw friendlyAuthError(error.message);
 }
 
+export async function sendCloudPasswordReset(email: string) {
+  const { error } = await getCloudAuthClient().auth.resetPasswordForEmail(
+    email.trim().toLowerCase(),
+    { redirectTo: `${window.location.origin}/auth/reset` },
+  );
+  if (error) throw friendlyAuthError(error.message);
+}
+
 export async function signOutCloudUser() {
   if (isCloudAuthConfigured) await getCloudAuthClient().auth.signOut();
 }
@@ -103,3 +111,4 @@ function friendlyAuthError(message: string) {
     return new Error('Espera unos minutos antes de solicitar otro correo.');
   return new Error(message || 'No pudimos completar la autenticación.');
 }
+
