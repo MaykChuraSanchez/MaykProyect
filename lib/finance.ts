@@ -69,6 +69,8 @@ export type Commitment = {
   installments?: number;
   paidInstallments?: number;
   category: string;
+  loanDate?: string;
+  note?: string;
 };
 export type Goal = {
   id: string | number;
@@ -745,6 +747,19 @@ export function answerFinancialQuestion(question: string, data: FinanceData) {
   }
   if (/debo|deuda|tarjeta/.test(q))
     return `Tu deuda total es ${formatMoney(summary.debt)}. De ese monto, ${formatMoney(summary.cardDebt)} corresponde a tarjetas.`;
+  if (/me deben|prest(e|é)|prestamo|préstamo|por cobrar/.test(q)) {
+    const loans = data.commitments.filter(
+      (commitment) =>
+        commitment.kind === 'Cobrar' && commitment.status !== 'Pagado',
+    );
+    const total = loans.reduce(
+      (sum, commitment) => sum + Number(commitment.amount),
+      0,
+    );
+    return loans.length
+      ? `Te deben ${formatMoney(total)} en ${loans.length} ${loans.length === 1 ? 'préstamo pendiente' : 'préstamos pendientes'}.`
+      : 'No tienes préstamos pendientes por cobrar.';
+  }
   if (/disponible.*próximo|próximo ingreso|diario/.test(q))
     return `Puedes usar aproximadamente ${formatMoney(summary.untilNextIncome)} hasta tu próximo ingreso. Son ${summary.daysToIncome} días, con un promedio recomendado de ${formatMoney(summary.dailyRecommended)} al día.`;
   if (/disponible|cuánto tengo|cuanto tengo/.test(q))
@@ -775,3 +790,4 @@ export function formatMoney(value: number) {
     minimumFractionDigits: 2,
   }).format(value);
 }
+
