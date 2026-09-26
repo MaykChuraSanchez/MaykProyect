@@ -122,6 +122,7 @@ type EntityKind =
   | 'budget'
   | 'commitment'
   | 'goal'
+  | 'loan'
   | 'recurring'
   | 'rule';
 type DashboardPayload = {
@@ -166,6 +167,7 @@ const nav = [
   { label: 'Tarjetas', icon: CreditCard },
   { label: 'Presupuestos', icon: WalletCards },
   { label: 'Pagos y pendientes', icon: CalendarDays },
+  { label: 'Préstamos', icon: HandCoins },
   { label: 'Ahorro', icon: Goal },
   { label: 'Análisis', icon: BarChart3 },
   { label: 'Proyección', icon: Gauge },
@@ -370,6 +372,18 @@ export default function FinanceCopilot() {
         category: values.category || 'Otros',
         paidInstallments: 0,
       });
+    if (kind === 'loan')
+      next.commitments.push({
+        id,
+        name: values.name.trim(),
+        kind: 'Cobrar',
+        amount: Number(values.amount || 0),
+        dueDate: values.dueDate,
+        loanDate: values.loanDate || new Date().toISOString().slice(0, 10),
+        note: values.note?.trim() || '',
+        status: 'Pendiente',
+        category: 'Préstamos',
+      });
     if (kind === 'goal')
       next.goals.push({
         id,
@@ -469,6 +483,7 @@ export default function FinanceCopilot() {
               {active === 'Tarjetas' && <CardsView {...common} />}
               {active === 'Presupuestos' && <BudgetsView {...common} />}
               {active === 'Pagos y pendientes' && <PaymentsView {...common} />}
+              {active === 'Préstamos' && <LoansView {...common} />}
               {active === 'Ahorro' && <SavingsView {...common} />}
               {active === 'Análisis' && <AnalysisView {...common} />}
               {active === 'Proyección' && <ProjectionView {...common} />}
@@ -2092,6 +2107,161 @@ function PaymentsView({ data, openEntity }: any) {
             </div>
           ))}
       </Panel>
+    </>
+  );
+}
+
+function LoansView({ data, openEntity, applyData, showNotice }: any) {
+  const loans = data.commitments
+    .filter((item: any) => item.kind === 'Cobrar')
+    .sort((left: any, right: any) => {
+      if (left.status === 'Pagado' && right.status !== 'Pagado') return 1;
+      if (left.status !== 'Pagado' && right.status === 'Pagado') return -1;
+      return String(left.dueDate).localeCompare(String(right.dueDate));
+    });
+  const pending = loans.filter((item: any) => item.status !== 'Pagado');
+  const pendingTotal = pending.reduce(
+    (sum: number, item: any) => sum + Number(item.amount),
+    0,
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  const inSevenDays = new Date(Date.now() + 7 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const dueSoon = pending.filter(
+    (item: any) => item.dueDate && item.dueDate <= inSevenDays,
+  ).length;
+
+  function toggleCollected(id: string | number) {
+    const current = data.commitments.find((item: any) => item.id === id);
+    const collected = current?.status !== 'Pagado';
+    applyData({
+      ...data,
+      commitments: data.commitments.map((item: any) =>
+        item.id === id
+          ? { ...item, status: collected ? 'Pagado' : 'Pendiente' }
+          : item,
+      ),
+    });
+    showNotice(
+      collected
+        ? 'Préstamo marcado como cobrado'
+        : 'Préstamo reabierto como pendiente',
+    );
+  }
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Dinero prestado"
+        title="Préstamos"
+        subtitle="Controla fácilmente quién te debe, cuánto y para cuándo"
+        action={
+          <Button onClick={() => openEntity('loan')}>
+            <Plus /> Registrar préstamo
+          </Button>
+        }
+      />
+      <section className="loan-kpis">
+        <article>
+          <span className="loan-kpi-icon primary">
+            <HandCoins />
+          </span>
+          <div>
+            <small>TOTAL POR COBRAR</small>
+            <b>{formatMoney(pendingTotal)}</b>
+            <p>{pending.length} préstamos pendientes</p>
+          </div>
+        </article>
+        <article>
+          <span className="loan-kpi-icon green">
+            <UserRound />
+          </span>
+          <div>
+            <small>PERSONAS</small>
+            <b>{new Set(pending.map((item: any) => item.name)).size}</b>
+            <p>Con saldos pendientes</p>
+          </div>
+        </article>
+        <article>
+          <span className="loan-kpi-icon amber">
+            <CalendarDays />
+          </span>
+          <div>
+            <small>POR VENCER</small>
+            <b>{dueSoon}</b>
+            <p>Hasta los próximos 7 días</p>
+          </div>
+        </article>
+      </section>
+
+      <Panel
+        title="Me deben"
+        subtitle="Préstamos personales registrados"
+        action={
+          <button onClick={() => openEntity('loan')}>
+            Agregar <Plus />
+          </button>
+        }
+      >
+        {!loans.length ? (
+          <div className="loan-empty">
+            <span>
+              <HandCoins />
+            </span>
+            <b>Todavía no registraste préstamos</b>
+            <p>
+              Cuando prestes dinero a alguien, guárdalo aquí para recordar el
+              monto y la fecha de devolución.
+            </p>
+            <Button onClick={() => openEntity('loan')}>
+              <Plus /> Registrar el primero
+            </Button>
+          </div>
+        ) : (
+          <div className="loan-list">
+            {loans.map((loan: any) => {
+              const collected = loan.status === 'Pagado';
+              const overdue = !collected && loan.dueDate && loan.dueDate < today;
+              return (
+                <article
+                  className={`loan-row ${collected ? 'collected' : ''}`}
+                  key={loan.id}
+                >
+                  <span className="loan-avatar">{initials(loan.name)}</span>
+                  <div className="loan-person">
+                    <b>{loan.name}</b>
+                    <small>
+                      {loan.note || 'Préstamo personal'}
+                      {loan.loanDate ? ` · Prestado ${shortDate(loan.loanDate)}` : ''}
+                    </small>
+                  </div>
+                  <div className="loan-due">
+                    <small>Fecha acordada</small>
+                    <b>{loan.dueDate ? shortDate(loan.dueDate) : 'Sin fecha'}</b>
+                    <em className={overdue ? 'overdue' : collected ? 'paid' : ''}>
+                      {collected ? 'Cobrado' : overdue ? 'Vencido' : 'Pendiente'}
+                    </em>
+                  </div>
+                  <strong>{formatMoney(loan.amount)}</strong>
+                  <Button
+                    variant="outline"
+                    onClick={() => toggleCollected(loan.id)}
+                  >
+                    {collected ? <RefreshCw /> : <Check />}
+                    {collected ? 'Reabrir' : 'Marcar cobrado'}
+                  </Button>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+      <p className="loan-note">
+        <ShieldCheck /> Marcar un préstamo como cobrado actualiza el control de
+        pendientes. Registra además el ingreso si deseas sumarlo al saldo de
+        una cuenta.
+      </p>
     </>
   );
 }
@@ -3960,6 +4130,7 @@ function EntityDialog({
     card: 'Nueva tarjeta',
     budget: 'Nuevo presupuesto',
     commitment: 'Nuevo pendiente',
+    loan: 'Registrar préstamo',
     goal: 'Nueva meta',
     recurring: 'Nuevo movimiento recurrente',
     rule: 'Nueva regla',
@@ -3974,6 +4145,14 @@ function EntityDialog({
     }
     if (kind === 'rule' && !form.contains?.trim()) {
       setError('Escribe el texto que debe reconocer la regla.');
+      return;
+    }
+    if (kind === 'loan' && Number(form.amount || 0) <= 0) {
+      setError('Escribe un monto mayor a cero.');
+      return;
+    }
+    if (kind === 'loan' && !form.dueDate) {
+      setError('Elige la fecha acordada de devolución.');
       return;
     }
     onSaveEntity(kind, {
@@ -4149,6 +4328,58 @@ function EntityDialog({
                   onChange={(e) =>
                     setForm({ ...form, category: e.target.value })
                   }
+                />
+              </Field>
+            </>
+          )}
+          {kind === 'loan' && (
+            <>
+              <Field label="¿Quién te debe?">
+                <input
+                  autoFocus
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="Ej. Carlos"
+                  autoComplete="off"
+                />
+              </Field>
+              <Field label="Monto prestado">
+                <div className="money-input">
+                  <span>S/</span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    inputMode="decimal"
+                    onChange={(e) =>
+                      setForm({ ...form, amount: e.target.value })
+                    }
+                    placeholder="5.00"
+                  />
+                </div>
+              </Field>
+              <div className="two-fields">
+                <Field label="Fecha del préstamo">
+                  <input
+                    type="date"
+                    defaultValue={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) =>
+                      setForm({ ...form, loanDate: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Fecha de devolución">
+                  <input
+                    type="date"
+                    onChange={(e) =>
+                      setForm({ ...form, dueDate: e.target.value })
+                    }
+                  />
+                </Field>
+              </div>
+              <Field label="Motivo o nota (opcional)">
+                <input
+                  onChange={(e) => setForm({ ...form, note: e.target.value })}
+                  placeholder="Ej. Almuerzo, taxi, emergencia..."
                 />
               </Field>
             </>
