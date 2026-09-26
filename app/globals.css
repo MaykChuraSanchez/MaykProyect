@@ -4279,6 +4279,212 @@ svg {
 .danger-row > svg:first-child {
   color: #b93846;
 }
+.loan-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.loan-kpis article {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.loan-kpi-icon {
+  display: grid;
+  flex: 0 0 42px;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: #e6eff4;
+  color: #245e79;
+}
+.loan-kpi-icon.green {
+  background: #e5f3ee;
+  color: #13795a;
+}
+.loan-kpi-icon.amber {
+  background: #f8efe0;
+  color: #a66514;
+}
+.dark .loan-kpi-icon {
+  background: #203f4e;
+  color: #8fc5da;
+}
+.dark .loan-kpi-icon.green {
+  background: #1c463a;
+  color: #78d5b5;
+}
+.dark .loan-kpi-icon.amber {
+  background: #4d3c25;
+  color: #efbd72;
+}
+.loan-kpi-icon svg {
+  width: 20px;
+}
+.loan-kpis small,
+.loan-kpis b,
+.loan-kpis p {
+  display: block;
+}
+.loan-kpis small {
+  color: var(--text-soft);
+  font-size: 0.54rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+.loan-kpis b {
+  margin-top: 3px;
+  font-size: 1rem;
+}
+.loan-kpis p {
+  margin: 2px 0 0;
+  color: var(--text-soft);
+  font-size: 0.59rem;
+}
+.loan-list {
+  display: grid;
+  gap: 8px;
+}
+.loan-row {
+  display: grid;
+  grid-template-columns: 42px minmax(160px, 1fr) 130px 110px 142px;
+  gap: 12px;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+}
+.loan-row.collected {
+  opacity: 0.72;
+  background: var(--muted);
+}
+.loan-avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #dcebf1;
+  color: #174d68;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+.dark .loan-avatar {
+  background: #203f4e;
+  color: #b9dce9;
+}
+.loan-person,
+.loan-due {
+  min-width: 0;
+}
+.loan-person b,
+.loan-person small,
+.loan-due small,
+.loan-due b {
+  display: block;
+}
+.loan-person b {
+  font-size: 0.72rem;
+}
+.loan-person small,
+.loan-due small {
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--text-soft);
+  font-size: 0.57rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.loan-due b {
+  margin-top: 2px;
+  font-size: 0.65rem;
+}
+.loan-due em {
+  display: inline-flex;
+  margin-top: 4px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: #edf4f7;
+  color: #356f8a;
+  font-size: 0.51rem;
+  font-style: normal;
+  font-weight: 750;
+}
+.loan-due em.overdue {
+  background: #fff0e8;
+  color: #b74d27;
+}
+.loan-due em.paid {
+  background: #e5f3ee;
+  color: #13795a;
+}
+.loan-row > strong {
+  color: var(--financial-green);
+  font-size: 0.76rem;
+  text-align: right;
+}
+.loan-row > button {
+  height: 34px;
+  padding: 0 10px;
+  font-size: 0.58rem;
+}
+.loan-row > button svg {
+  width: 14px;
+}
+.loan-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 18px;
+  text-align: center;
+}
+.loan-empty > span {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin-bottom: 14px;
+  border-radius: 17px;
+  background: #e6eff4;
+  color: #245e79;
+}
+.loan-empty > span svg {
+  width: 27px;
+}
+.loan-empty b {
+  font-size: 0.78rem;
+}
+.loan-empty p {
+  max-width: 420px;
+  margin: 7px 0 16px;
+  color: var(--text-soft);
+  font-size: 0.65rem;
+  line-height: 1.55;
+}
+.loan-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 12px 0 0;
+  color: var(--text-soft);
+  font-size: 0.57rem;
+  text-align: center;
+}
+.loan-note svg {
+  flex: 0 0 auto;
+  width: 14px;
+  color: var(--financial-green);
+}
 @media (max-width: 900px) {
   .auth-shell {
     grid-template-columns: 1fr;
@@ -4302,6 +4508,23 @@ svg {
   .receipt-preview {
     min-height: 260px;
   }
+  .loan-kpis {
+    grid-template-columns: 1fr;
+  }
+  .loan-row {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+  }
+  .loan-due {
+    grid-column: 2;
+  }
+  .loan-row > strong {
+    grid-row: 1;
+    grid-column: 3;
+  }
+  .loan-row > button {
+    grid-column: 2/4;
+    width: 100%;
+  }
 }
 @media (max-width: 680px) {
   .auth-benefits {
@@ -4324,6 +4547,16 @@ svg {
   }
   .account-summary-row em {
     grid-column: 2;
+  }
+  .loan-kpis article {
+    padding: 14px;
+  }
+  .loan-row {
+    gap: 9px;
+  }
+  .loan-note {
+    align-items: flex-start;
+    text-align: left;
   }
 }
 
