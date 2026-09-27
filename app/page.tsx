@@ -112,6 +112,7 @@ import {
   sendCloudPasswordReset,
   signInCloudUser,
   signOutCloudUser,
+  subscribeToCloudAuth,
 } from '@/lib/cloud-auth';
 import { parseReceiptText, type ReceiptDraft } from '@/lib/receipt';
 
@@ -257,6 +258,18 @@ export default function FinanceCopilot() {
       setAuthReady(true);
       setLoading(false);
     });
+
+    const unsubscribe = isCloudAuthConfigured
+      ? subscribeToCloudAuth((event, nextUser) => {
+          if (event === 'SIGNED_OUT') {
+            handleSignedOut();
+            return;
+          }
+          if (nextUser && ['SIGNED_IN', 'USER_UPDATED'].includes(event))
+            handleAuthenticated(nextUser);
+        })
+      : () => undefined;
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -425,6 +438,19 @@ export default function FinanceCopilot() {
     setInsights(generateInsights(savedData));
   }
 
+  function handleSignedOut() {
+    const clean = emptyFinanceData();
+    setUser(null);
+    setActive('Inicio');
+    setMenuOpen(false);
+    setRegisterOpen(false);
+    setEntity(null);
+    dataRef.current = clean;
+    setData(clean);
+    setSummary(calculateFinancialSummary(clean));
+    setInsights(generateInsights(clean));
+  }
+
   if (!authReady) return <LoadingDashboard />;
   if (!user) return <AuthScreen onAuthenticated={handleAuthenticated} />;
 
@@ -461,10 +487,12 @@ export default function FinanceCopilot() {
           onTheme={changeTheme}
           user={user}
           onLogout={async () => {
-            if (isCloudAuthConfigured) await signOutCloudUser();
-            else signOutLocalUser();
-            setUser(null);
-            setData(structuredClone(demoFinanceData));
+            try {
+              if (isCloudAuthConfigured) await signOutCloudUser();
+              else signOutLocalUser();
+            } finally {
+              handleSignedOut();
+            }
           }}
         />
         <div className="page-wrap">
@@ -560,10 +588,6 @@ function AuthScreen({
     event.preventDefault();
     setError('');
     const normalizedEmail = email.trim().toLowerCase();
-    if (mode === 'register' && name.trim().length < 2) {
-      setError('Escribe tu nombre para crear la cuenta.');
-      return;
-    }
     if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
       setError('Escribe un correo electrónico válido.');
       return;
@@ -572,10 +596,16 @@ function AuthScreen({
       setError('La contraseña debe tener al menos 8 caracteres.');
       return;
     }
+    const displayName =
+      name.trim() || normalizedEmail.split('@')[0] || 'Usuario';
     setBusy(true);
     try {
       if (isCloudAuthConfigured && mode === 'register') {
-        const result = await registerCloudUser(name, normalizedEmail, password);
+        const result = await registerCloudUser(
+          displayName,
+          normalizedEmail,
+          password,
+        );
         if (result.confirmationRequired) {
           setConfirmationSent(true);
           return;
@@ -585,7 +615,7 @@ function AuthScreen({
         const nextUser = isCloudAuthConfigured
           ? await signInCloudUser(normalizedEmail, password)
           : mode === 'register'
-            ? await registerLocalUser(name, normalizedEmail, password)
+            ? await registerLocalUser(displayName, normalizedEmail, password)
             : await signInLocalUser(normalizedEmail, password);
         onAuthenticated(nextUser);
       }
@@ -601,10 +631,16 @@ function AuthScreen({
   }
 
   async function resendConfirmation() {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+      setError('Escribe primero el correo de tu cuenta.');
+      return;
+    }
     setBusy(true);
     setError('');
+    setResent(false);
     try {
-      await resendCloudConfirmation(email);
+      await resendCloudConfirmation(normalizedEmail);
       setResent(true);
     } catch (cause) {
       setError(
@@ -709,8 +745,8 @@ function AuthScreen({
             <small>RECUPERA TU ACCESO</small>
             <h2>Revisa tu correo</h2>
             <p>
-              Si existe una cuenta para <b>{email}</b>, recibirás un enlace
-              para crear una contraseña nueva. Revisa también spam.
+              Si existe una cuenta para <b>{email}</b>, recibirás un enlace para
+              crear una contraseña nueva. Revisa también spam.
             </p>
             <div className="confirmation-steps">
               <span>
@@ -765,7 +801,9 @@ function AuthScreen({
               </span>
             </div>
             {resent && (
-              <p className="form-success">Correo reenviado correctamente.</p>
+              <p className="form-success">
+                Te enviamos un nuevo correo de confirmación.
+              </p>
             )}
             {error && (
               <p className="form-error">
@@ -812,14 +850,13 @@ function AuthScreen({
             </div>
             <form onSubmit={submit} noValidate>
               {mode === 'register' && (
-                <Field label="Nombre">
+                <Field label="Nombre (opcional)">
                   <input
                     autoFocus
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     autoComplete="name"
                     placeholder="Tu nombre"
-                    required
                   />
                 </Field>
               )}
@@ -848,14 +885,29 @@ function AuthScreen({
                 />
               </Field>
               {mode === 'login' && isCloudAuthConfigured && (
-                <button
-                  type="button"
-                  className="forgot-password"
-                  disabled={busy}
-                  onClick={requestPasswordReset}
-                >
-                  ¿Olvidaste tu contraseña?
-                </button>
+                <div className="auth-account-actions">
+                  <button
+                    type="button"
+                    className="forgot-password"
+                    disabled={busy}
+                    onClick={requestPasswordReset}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                  <button
+                    type="button"
+                    className="forgot-password"
+                    disabled={busy}
+                    onClick={resendConfirmation}
+                  >
+                    Reenviar correo de confirmación
+                  </button>
+                </div>
+              )}
+              {resent && (
+                <output className="form-success">
+                  Te enviamos un nuevo correo de confirmación.
+                </output>
               )}
               {error && (
                 <p className="form-error" role="alert" aria-live="assertive">
@@ -2222,7 +2274,8 @@ function LoansView({ data, openEntity, applyData, showNotice }: any) {
           <div className="loan-list">
             {loans.map((loan: any) => {
               const collected = loan.status === 'Pagado';
-              const overdue = !collected && loan.dueDate && loan.dueDate < today;
+              const overdue =
+                !collected && loan.dueDate && loan.dueDate < today;
               return (
                 <article
                   className={`loan-row ${collected ? 'collected' : ''}`}
@@ -2233,14 +2286,24 @@ function LoansView({ data, openEntity, applyData, showNotice }: any) {
                     <b>{loan.name}</b>
                     <small>
                       {loan.note || 'Préstamo personal'}
-                      {loan.loanDate ? ` · Prestado ${shortDate(loan.loanDate)}` : ''}
+                      {loan.loanDate
+                        ? ` · Prestado ${shortDate(loan.loanDate)}`
+                        : ''}
                     </small>
                   </div>
                   <div className="loan-due">
                     <small>Fecha acordada</small>
-                    <b>{loan.dueDate ? shortDate(loan.dueDate) : 'Sin fecha'}</b>
-                    <em className={overdue ? 'overdue' : collected ? 'paid' : ''}>
-                      {collected ? 'Cobrado' : overdue ? 'Vencido' : 'Pendiente'}
+                    <b>
+                      {loan.dueDate ? shortDate(loan.dueDate) : 'Sin fecha'}
+                    </b>
+                    <em
+                      className={overdue ? 'overdue' : collected ? 'paid' : ''}
+                    >
+                      {collected
+                        ? 'Cobrado'
+                        : overdue
+                          ? 'Vencido'
+                          : 'Pendiente'}
                     </em>
                   </div>
                   <strong>{formatMoney(loan.amount)}</strong>
@@ -2259,8 +2322,8 @@ function LoansView({ data, openEntity, applyData, showNotice }: any) {
       </Panel>
       <p className="loan-note">
         <ShieldCheck /> Marcar un préstamo como cobrado actualiza el control de
-        pendientes. Registra además el ingreso si deseas sumarlo al saldo de
-        una cuenta.
+        pendientes. Registra además el ingreso si deseas sumarlo al saldo de una
+        cuenta.
       </p>
     </>
   );
