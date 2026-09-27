@@ -1,4 +1,9 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import {
+  createClient,
+  type AuthChangeEvent,
+  type Session,
+  type SupabaseClient,
+} from '@supabase/supabase-js';
 import type { LocalUser } from '@/lib/local-account';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -28,6 +33,29 @@ export async function currentCloudUser(): Promise<LocalUser | null> {
   return toLocalUser(data.user.email, data.user.user_metadata?.name);
 }
 
+export function subscribeToCloudAuth(
+  listener: (
+    event: AuthChangeEvent,
+    user: LocalUser | null,
+    session: Session | null,
+  ) => void,
+) {
+  if (!isCloudAuthConfigured) return () => undefined;
+  const { data } = getCloudAuthClient().auth.onAuthStateChange(
+    (event, session) => {
+      const authUser = session?.user;
+      listener(
+        event,
+        authUser?.email
+          ? toLocalUser(authUser.email, authUser.user_metadata?.name)
+          : null,
+        session,
+      );
+    },
+  );
+  return () => data.subscription.unsubscribe();
+}
+
 export async function registerCloudUser(
   name: string,
   email: string,
@@ -39,7 +67,7 @@ export async function registerCloudUser(
     password,
     options: {
       data: { name: name.trim().slice(0, 80) },
-      emailRedirectTo: `${window.location.origin}/auth/confirm`,
+      emailRedirectTo: authRedirectUrl('/auth/confirm'),
     },
   });
   if (error) throw friendlyAuthError(error.message);
@@ -66,7 +94,7 @@ export async function resendCloudConfirmation(email: string) {
   const { error } = await getCloudAuthClient().auth.resend({
     type: 'signup',
     email: email.trim().toLowerCase(),
-    options: { emailRedirectTo: `${window.location.origin}/auth/confirm` },
+    options: { emailRedirectTo: authRedirectUrl('/auth/confirm') },
   });
   if (error) throw friendlyAuthError(error.message);
 }
@@ -74,13 +102,15 @@ export async function resendCloudConfirmation(email: string) {
 export async function sendCloudPasswordReset(email: string) {
   const { error } = await getCloudAuthClient().auth.resetPasswordForEmail(
     email.trim().toLowerCase(),
-    { redirectTo: `${window.location.origin}/auth/reset` },
+    { redirectTo: authRedirectUrl('/auth/reset') },
   );
   if (error) throw friendlyAuthError(error.message);
 }
 
 export async function signOutCloudUser() {
-  if (isCloudAuthConfigured) await getCloudAuthClient().auth.signOut();
+  if (!isCloudAuthConfigured) return;
+  const { error } = await getCloudAuthClient().auth.signOut({ scope: 'local' });
+  if (error) throw friendlyAuthError(error.message);
 }
 
 export async function getCloudAccessToken() {
@@ -97,18 +127,56 @@ function toLocalUser(email: string, name?: unknown): LocalUser {
   };
 }
 
-function friendlyAuthError(message: string) {
+function authRedirectUrl(path: '/auth/confirm' | '/auth/reset') {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(
+    /\/+$/,
+    '',
+  );
+  const origin = configured || window.location.origin;
+  try {
+    const url = new URL(path, `${origin}/`);
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
+    return url.toString();
+  } catch {
+    return new URL(path, window.location.origin).toString();
+  }
+}
+
+export function friendlyAuthError(message: string) {
   const lower = message.toLowerCase();
   if (lower.includes('email not confirmed'))
-    return new Error(
-      'Confirma tu correo antes de ingresar. Revisa también spam.',
-    );
-  if (lower.includes('invalid login credentials'))
-    return new Error('El correo o la contraseña no son correctos.');
+    return new Error('Debes confirmar tu correo antes de ingresar.');
+  if (
+    lower.includes('invalid login credentials') ||
+    lower.includes('invalid credentials') ||
+    lower.includes('user not found')
+  )
+    return new Error('Correo o contraseña incorrectos.');
   if (lower.includes('already registered') || lower.includes('already exists'))
-    return new Error('Este correo ya está registrado. Prueba ingresar.');
-  if (lower.includes('rate limit'))
-    return new Error('Espera unos minutos antes de solicitar otro correo.');
-  return new Error(message || 'No pudimos completar la autenticación.');
+    return new Error('Ya existe una cuenta con este correo.');
+  if (
+    lower.includes('rate limit') ||
+    lower.includes('too many requests') ||
+    lower.includes('over_email_send_rate_limit')
+  )
+    return new Error(
+      'Se realizaron demasiados intentos. Intenta nuevamente en unos minutos.',
+    );
+  if (
+    lower.includes('expired') ||
+    lower.includes('otp_expired') ||
+    lower.includes('invalid token')
+  )
+    return new Error('Este enlace ya venció. Solicita uno nuevo.');
+  if (
+    lower.includes('fetch') ||
+    lower.includes('network') ||
+    lower.includes('timeout') ||
+    lower.includes('load failed')
+  )
+    return new Error(
+      'No pudimos conectarnos. Revisa tu conexión e intenta nuevamente.',
+    );
+  return new Error('No pudimos completar la solicitud. Intenta nuevamente.');
 }
 
