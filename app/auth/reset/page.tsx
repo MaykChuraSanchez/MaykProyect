@@ -1,39 +1,55 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { type SyntheticEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Check, LoaderCircle, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { getCloudAuthClient, isCloudAuthConfigured } from '@/lib/cloud-auth';
+import {
+  friendlyAuthError,
+  getCloudAuthClient,
+  isCloudAuthConfigured,
+} from '@/lib/cloud-auth';
 
 type ResetState = 'checking' | 'ready' | 'saving' | 'done' | 'error';
 
 export default function ResetPasswordPage() {
-  const [state, setState] = useState<ResetState>('checking');
+  const [state, setState] = useState<ResetState>(
+    isCloudAuthConfigured ? 'checking' : 'error',
+  );
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(
+    isCloudAuthConfigured
+      ? ''
+      : 'La recuperación de cuenta aún no está configurada.',
+  );
 
   useEffect(() => {
-    if (!isCloudAuthConfigured) {
-      setMessage('La recuperación de cuenta aún no está configurada.');
-      setState('error');
-      return;
-    }
+    if (!isCloudAuthConfigured) return;
 
     const client = getCloudAuthClient();
     let active = true;
     let timeout = 0;
 
+    function fail() {
+      if (!active) return;
+      window.clearTimeout(timeout);
+      setMessage('Este enlace ya venció. Solicita uno nuevo.');
+      setState('error');
+    }
+
     async function prepare() {
-      const code = new URL(window.location.href).searchParams.get('code');
+      const url = new URL(window.location.href);
+      const fragment = new URLSearchParams(url.hash.replace(/^#/, ''));
+      if (url.searchParams.get('error') || fragment.get('error')) {
+        fail();
+        return;
+      }
+      const code = url.searchParams.get('code');
       if (code) {
         const { error } = await client.auth.exchangeCodeForSession(code);
         if (error) {
-          if (active) {
-            setMessage('El enlace venció o ya fue utilizado. Solicita uno nuevo.');
-            setState('error');
-          }
+          fail();
           return;
         }
         window.history.replaceState({}, '', '/auth/reset');
@@ -42,18 +58,16 @@ export default function ResetPasswordPage() {
       const { data, error } = await client.auth.getSession();
       if (!active) return;
       if (error || !data.session) {
-        timeout = window.setTimeout(() => {
-          setMessage('El enlace venció o no es válido. Solicita uno nuevo.');
-          setState('error');
-        }, 5000);
+        timeout = window.setTimeout(fail, 7000);
         return;
       }
+      window.clearTimeout(timeout);
       setState('ready');
     }
 
     void prepare();
     const { data } = client.auth.onAuthStateChange((event, session) => {
-      if (active && session && (event === 'PASSWORD_RECOVERY' || state === 'checking')) {
+      if (active && session && event === 'PASSWORD_RECOVERY') {
         window.clearTimeout(timeout);
         setState('ready');
       }
@@ -66,7 +80,7 @@ export default function ResetPasswordPage() {
     };
   }, []);
 
-  async function save(event: FormEvent) {
+  async function save(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage('');
     if (password.length < 8) {
@@ -80,10 +94,11 @@ export default function ResetPasswordPage() {
     setState('saving');
     const { error } = await getCloudAuthClient().auth.updateUser({ password });
     if (error) {
-      setMessage('No pudimos guardar la contraseña. Solicita un enlace nuevo.');
+      setMessage(friendlyAuthError(error.message).message);
       setState('ready');
       return;
     }
+    await getCloudAuthClient().auth.signOut({ scope: 'local' });
     setPassword('');
     setConfirmation('');
     setState('done');
@@ -143,8 +158,16 @@ export default function ResetPasswordPage() {
                 <AlertTriangle /> {message}
               </p>
             )}
-            <Button className="full-save" type="submit" disabled={state === 'saving'}>
-              {state === 'saving' ? <LoaderCircle className="spin" /> : <ShieldCheck />}
+            <Button
+              className="full-save"
+              type="submit"
+              disabled={state === 'saving'}
+            >
+              {state === 'saving' ? (
+                <LoaderCircle className="spin" />
+              ) : (
+                <ShieldCheck />
+              )}
               Guardar contraseña
             </Button>
           </form>
@@ -157,7 +180,9 @@ export default function ResetPasswordPage() {
                   ? 'Ya puedes ingresar a Suma con tu contraseña nueva.'
                   : message}
             </p>
-            <Link href="/">{state === 'done' ? 'Ingresar a Suma' : 'Volver al ingreso'}</Link>
+            <Link href="/">
+              {state === 'done' ? 'Ingresar a Suma' : 'Volver al ingreso'}
+            </Link>
           </>
         )}
       </section>
