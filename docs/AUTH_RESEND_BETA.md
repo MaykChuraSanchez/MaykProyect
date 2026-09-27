@@ -158,6 +158,25 @@ Asunto: `Confirma tu nuevo correo en Suma`
 La URL y la publishable key de Supabase pueden estar en el navegador por
 diseño. Nunca deben sustituirse por `service_role` ni por una secret key.
 
+## Configuración manual en Vercel
+
+1. Entrar en Vercel y abrir el proyecto **suma-finanzas**.
+2. Ir a **Settings > Environment Variables**.
+3. Verificar que `NEXT_PUBLIC_SUPABASE_URL` y
+   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` existan en **Production**. Sus valores
+   se obtienen en **Supabase > Project Settings > API**. Usar la publishable key,
+   nunca `service_role` ni una secret key.
+4. Añadir `NEXT_PUBLIC_APP_URL` con el valor
+   `https://suma-finanzas.vercel.app` en **Production**. Puede usarse el mismo
+   valor en Preview si se desea que todo email vuelva al dominio canónico.
+5. Verificar que `APP_SINGLE_USER_ID` no exista en Production.
+6. No crear `RESEND_API_KEY` en Vercel: Supabase SMTP es el único consumidor.
+7. Mantener las variables de Gmail y base de datos con alcance de servidor, sin
+   prefijos `NEXT_PUBLIC_`.
+8. Después de cambiar una variable pública, ir a **Deployments**, abrir el
+   último despliegue y usar **Redeploy**, porque Next.js incorpora las variables
+   públicas durante el build.
+
 ## Almacenamiento actual
 
 | Área                                      | Almacenamiento actual                                   | Observación                                  |
